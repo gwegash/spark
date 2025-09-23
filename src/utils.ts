@@ -15,6 +15,17 @@ import { unindent } from "./dyno/base.js";
 
 const f32buffer = new Float32Array(1);
 const u32buffer = new Uint32Array(f32buffer.buffer);
+const supportsFloat16Array = "Float16Array" in globalThis;
+const f16buffer = supportsFloat16Array
+  ? new globalThis["Float16Array" as keyof typeof globalThis](1)
+  : null;
+const u16buffer = new Uint16Array(f16buffer?.buffer);
+
+// Returns a normalized array of numbers
+export function normalize(vec: number[]) {
+  const norm = Math.sqrt(vec.reduce((acc, v) => acc + v * v, 0));
+  return vec.map((v) => v / norm);
+}
 
 // Reinterpret the bits of a float32 as a uint32
 export function floatBitsToUint(f: number): number {
@@ -28,8 +39,17 @@ export function uintBitsToFloat(u: number): number {
   return f32buffer[0];
 }
 
+export const toHalf = supportsFloat16Array ? toHalfNative : toHalfJS;
+export const fromHalf = supportsFloat16Array ? fromHalfNative : fromHalfJS;
+
 // Encode a number as a float16, stored as a uint16 number.
-export function toHalf(f: number): number {
+function toHalfNative(f: number): number {
+  f16buffer[0] = f;
+  return u16buffer[0];
+}
+
+// Encode a number as a float16, stored as a uint16 number.
+function toHalfJS(f: number): number {
   // Store the value into the shared Float32 array.
   f32buffer[0] = f;
   const bits = u32buffer[0];
@@ -75,7 +95,13 @@ export function toHalf(f: number): number {
 }
 
 // Convert a float16 stored as a uint16 number back to a float32.
-export function fromHalf(h: number): number {
+function fromHalfNative(u: number): number {
+  u16buffer[0] = u;
+  return f16buffer[0];
+}
+
+// Convert a float16 stored as a uint16 number back to a float32.
+function fromHalfJS(h: number): number {
   // Extract the sign (1 bit), exponent (5 bits), and fraction (10 bits)
   const sign = (h >> 15) & 0x1;
   const exp = (h >> 10) & 0x1f;
@@ -370,7 +396,7 @@ export function setPackedSplat(
 
   // Alternate internal encodings commented out below.
   const uQuat = encodeQuatOctXy88R8(
-    new THREE.Quaternion(quatX, quatY, quatZ, quatW),
+    tempQuaternion.set(quatX, quatY, quatZ, quatW),
   );
   // const uQuat = encodeQuatXyz888(new THREE.Quaternion(quatX, quatY, quatZ, quatW));
   // const uQuat = encodeQuatEulerXyz888(new THREE.Quaternion(quatX, quatY, quatZ, quatW));
